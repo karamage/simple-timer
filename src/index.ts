@@ -6,8 +6,11 @@ type Bindings = {
 
 const app = new Hono<{ Bindings: Bindings }>()
 
-// HTMLページの生成
-const generateHTML = (status: 'running' | 'stopped', timeLeft = '') => `
+// HTMLの生成関数
+const generateHTML = (expiresAt: number | null) => {
+  const expiresTimestamp = expiresAt ? new Date(expiresAt).getTime() : null
+
+  return `
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -41,11 +44,11 @@ const generateHTML = (status: 'running' | 'stopped', timeLeft = '') => `
       margin-bottom: 20px;
     }
     .time {
-      font-size: 2rem;
+      font-size: 3rem;
       margin: 20px 0;
     }
     button {
-      padding: 10px 20px;
+      padding: 12px 30px;
       font-size: 1.2rem;
       color: #fff;
       background: #ff7e5f;
@@ -57,27 +60,61 @@ const generateHTML = (status: 'running' | 'stopped', timeLeft = '') => `
     button:hover {
       background: #feb47b;
     }
+    .finished {
+      font-size: 2rem;
+      color: #ffdd57;
+      margin-top: 20px;
+    }
   </style>
 </head>
 <body>
 <div class="container">
   <h1>3分タイマー</h1>
-  <div class="time">${status === 'running' ? timeLeft : '⏱️ 00:00'}</div>
-  ${status === 'stopped'
-    ? `<form method="post"><button type="submit">スタート</button></form>`
-    : `<p>タイマーが進行中...</p>`}
+  <div id="timer" class="time">⏱️ 00:00</div>
+  <form method="post" style="display: ${expiresAt ? 'none' : 'block'};">
+    <button type="submit">スタート</button>
+  </form>
+  <div id="finished" class="finished" style="display: none;">✅ タイマーが終了しました！</div>
 </div>
+
+<script>
+  const expiresAt = ${expiresTimestamp || 'null'}
+
+  if (expiresAt) {
+    const timerElement = document.getElementById('timer')
+    const finishedElement = document.getElementById('finished')
+
+    const updateTimer = () => {
+      const now = Date.now()
+      const remaining = expiresAt - now
+
+      if (remaining <= 0) {
+        timerElement.style.display = 'none'
+        finishedElement.style.display = 'block'
+        clearInterval(interval)
+        return
+      }
+
+      const minutes = Math.floor(remaining / 60000)
+      const seconds = Math.floor((remaining % 60000) / 1000)
+      timerElement.textContent = \`\${minutes.toString().padStart(2, '0')}:\${seconds.toString().padStart(2, '0')}\`
+    }
+
+    const interval = setInterval(updateTimer, 1000)
+    updateTimer()
+  }
+</script>
 </body>
 </html>
 `
+}
 
 // タイマー表示と管理
 app.get('/', async (c) => {
   const timer = await c.env.TIMER.get('timer')
 
   if (!timer) {
-    // タイマーが開始されていない
-    return c.html(generateHTML('stopped'))
+    return c.html(generateHTML(null))
   }
 
   const { expiresAt } = JSON.parse(timer)
@@ -85,15 +122,10 @@ app.get('/', async (c) => {
 
   if (remaining <= 0) {
     await c.env.TIMER.delete('timer')
-    return c.html(generateHTML('stopped', '✅ タイマーが終了しました！'))
+    return c.html(generateHTML(null))
   }
 
-  // 残り時間計算
-  const minutes = Math.floor(remaining / 60000)
-  const seconds = Math.floor((remaining % 60000) / 1000)
-  const timeLeft = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
-
-  return c.html(generateHTML('running', timeLeft))
+  return c.html(generateHTML(expiresAt))
 })
 
 // タイマー開始
