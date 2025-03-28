@@ -16,6 +16,8 @@ const generateSessionId = () => {
 // HTMLの生成関数
 const generateHTML = (expiresAt: number | null, sessionId: string) => {
   const expiresTimestamp = expiresAt ? new Date(expiresAt).getTime() : null
+  const remainingTime = expiresAt ? expiresAt - Date.now() : null
+  const totalDuration = remainingTime ? remainingTime + 1000 : null // 1秒の余裕をもたせる
 
   return `
 <!DOCTYPE html>
@@ -23,7 +25,7 @@ const generateHTML = (expiresAt: number | null, sessionId: string) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>3分タイマー</title>
+  <title>タイマー</title>
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700&family=Rajdhani:wght@300;500;700&display=swap" rel="stylesheet">
   <style>
     * {
@@ -192,13 +194,39 @@ const generateHTML = (expiresAt: number | null, sessionId: string) => {
         transform: perspective(500px) rotateX(60deg) translateY(40px);
       }
     }
+    .time-select {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .time-option {
+      font-family: 'Rajdhani', sans-serif;
+      padding: 10px 15px;
+      font-size: 1rem;
+      font-weight: 700;
+      color: #fff;
+      background: rgba(0, 230, 255, 0.1);
+      border: 1px solid rgba(0, 230, 255, 0.3);
+      border-radius: 4px;
+      cursor: pointer;
+      transition: 0.3s;
+      letter-spacing: 1px;
+      min-width: 80px;
+    }
+    .time-option:hover, .time-option.active {
+      background: rgba(0, 230, 255, 0.2);
+      border-color: rgba(0, 230, 255, 0.5);
+      box-shadow: 0 0 15px rgba(0, 230, 255, 0.3);
+    }
   </style>
 </head>
 <body>
 <div class="grid"></div>
 <div class="glow"></div>
 <div class="container">
-  <h1>3分タイマー</h1>
+  <h1>タイマー</h1>
   
   <div class="circle-container">
     <div class="circle-bg"></div>
@@ -209,14 +237,40 @@ const generateHTML = (expiresAt: number | null, sessionId: string) => {
   
   <form method="post" style="display: ${expiresAt ? 'none' : 'block'};">
     <input type="hidden" name="sessionId" value="${sessionId}">
+    <input type="hidden" name="duration" id="duration-input" value="180">
+    
+    <div class="time-select">
+      <button type="button" class="time-option active" data-seconds="180">3分</button>
+      <button type="button" class="time-option" data-seconds="300">5分</button>
+      <button type="button" class="time-option" data-seconds="600">10分</button>
+      <button type="button" class="time-option" data-seconds="1800">30分</button>
+      <button type="button" class="time-option" data-seconds="3600">60分</button>
+    </div>
+    
     <button type="submit">スタート</button>
   </form>
   <div id="finished" class="finished" style="display: none;">COMPLETE</div>
 </div>
 
 <script>
+  // タイマー時間選択の処理
+  const timeOptions = document.querySelectorAll('.time-option');
+  const durationInput = document.getElementById('duration-input');
+  
+  timeOptions.forEach(option => {
+    option.addEventListener('click', () => {
+      // 選択状態の切り替え
+      timeOptions.forEach(opt => opt.classList.remove('active'));
+      option.classList.add('active');
+      
+      // 選択した時間を隠しフィールドにセット
+      const seconds = option.getAttribute('data-seconds');
+      durationInput.value = seconds;
+    });
+  });
+
   const expiresAt = ${expiresTimestamp || 'null'}
-  const totalTime = 3 * 60 * 1000 // 3分のミリ秒
+  const totalDuration = ${totalDuration || 'null'} // 初期の残り時間
 
   if (expiresAt) {
     const timerElement = document.getElementById('timer')
@@ -237,16 +291,26 @@ const generateHTML = (expiresAt: number | null, sessionId: string) => {
       }
       
       // プログレスサークルの更新
-      const progress = (1 - (remaining / totalTime)) * 100
+      const progress = (1 - (remaining / totalDuration)) * 100
       progressCircle.style.background = \`conic-gradient(#00e6ff \${progress}%, rgba(0, 230, 255, 0.03) 0%)\`
       
       // プログレスに応じて光の効果を変更
       const glowOpacity = 0.2 + (progress / 200)
       document.querySelector('.glow').style.background = \`radial-gradient(circle, rgba(0, 230, 255, \${glowOpacity}) 0%, rgba(0, 230, 255, 0) 70%)\`
 
-      const minutes = Math.floor(remaining / 60000)
-      const seconds = Math.floor((remaining % 60000) / 1000)
-      timerElement.textContent = \`\${minutes.toString().padStart(2, '0')}:\${seconds.toString().padStart(2, '0')}\`
+      // 残り時間の表示形式を調整（分と秒、または時、分、秒）
+      let timeDisplay;
+      if (remaining >= 3600000) { // 1時間以上
+        const hours = Math.floor(remaining / 3600000);
+        const minutes = Math.floor((remaining % 3600000) / 60000);
+        const seconds = Math.floor((remaining % 60000) / 1000);
+        timeDisplay = \`\${hours}:\${minutes.toString().padStart(2, '0')}:\${seconds.toString().padStart(2, '0')}\`;
+      } else {
+        const minutes = Math.floor(remaining / 60000);
+        const seconds = Math.floor((remaining % 60000) / 1000);
+        timeDisplay = \`\${minutes.toString().padStart(2, '0')}:\${seconds.toString().padStart(2, '0')}\`;
+      }
+      timerElement.textContent = timeDisplay;
     }
 
     const interval = setInterval(updateTimer, 100) // より滑らかな更新のために100ms間隔に
@@ -267,7 +331,8 @@ app.get('/', async (c) => {
     return c.html(generateHTML(null, sessionId))
   }
 
-  const { expiresAt } = JSON.parse(timer)
+  const timerData = JSON.parse(timer)
+  const { expiresAt, duration } = timerData
   const remaining = expiresAt - Date.now()
 
   if (remaining <= 0) {
@@ -282,8 +347,13 @@ app.get('/', async (c) => {
 app.post('/', async (c) => {
   const formData = await c.req.formData()
   const sessionId = formData.get('sessionId') as string
-  const expiresAt = Date.now() + 3 * 60 * 1000  // 3分後
-  await c.env.TIMER.put(`timer:${sessionId}`, JSON.stringify({ expiresAt }))
+  const duration = parseInt(formData.get('duration') as string) || 180 // デフォルトは3分（180秒）
+  
+  const expiresAt = Date.now() + duration * 1000
+  await c.env.TIMER.put(`timer:${sessionId}`, JSON.stringify({ 
+    expiresAt,
+    duration
+  }))
 
   return c.redirect(`/?sessionId=${sessionId}`)
 })
