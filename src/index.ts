@@ -6,8 +6,15 @@ type Bindings = {
 
 const app = new Hono<{ Bindings: Bindings }>()
 
+// セッションIDの生成
+const generateSessionId = () => {
+  const array = new Uint8Array(16)
+  crypto.getRandomValues(array)
+  return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('')
+}
+
 // HTMLの生成関数
-const generateHTML = (expiresAt: number | null) => {
+const generateHTML = (expiresAt: number | null, sessionId: string) => {
   const expiresTimestamp = expiresAt ? new Date(expiresAt).getTime() : null
 
   return `
@@ -72,6 +79,7 @@ const generateHTML = (expiresAt: number | null) => {
   <h1>3分タイマー</h1>
   <div id="timer" class="time">⏱️ 00:00</div>
   <form method="post" style="display: ${expiresAt ? 'none' : 'block'};">
+    <input type="hidden" name="sessionId" value="${sessionId}">
     <button type="submit">スタート</button>
   </form>
   <div id="finished" class="finished" style="display: none;">✅ タイマーが終了しました！</div>
@@ -111,29 +119,32 @@ const generateHTML = (expiresAt: number | null) => {
 
 // タイマー表示と管理
 app.get('/', async (c) => {
-  const timer = await c.env.TIMER.get('timer')
+  const sessionId = c.req.query('sessionId') || generateSessionId()
+  const timer = await c.env.TIMER.get(`timer:${sessionId}`)
 
   if (!timer) {
-    return c.html(generateHTML(null))
+    return c.html(generateHTML(null, sessionId))
   }
 
   const { expiresAt } = JSON.parse(timer)
   const remaining = expiresAt - Date.now()
 
   if (remaining <= 0) {
-    await c.env.TIMER.delete('timer')
-    return c.html(generateHTML(null))
+    await c.env.TIMER.delete(`timer:${sessionId}`)
+    return c.html(generateHTML(null, sessionId))
   }
 
-  return c.html(generateHTML(expiresAt))
+  return c.html(generateHTML(expiresAt, sessionId))
 })
 
 // タイマー開始
 app.post('/', async (c) => {
+  const formData = await c.req.formData()
+  const sessionId = formData.get('sessionId') as string
   const expiresAt = Date.now() + 3 * 60 * 1000  // 3分後
-  await c.env.TIMER.put('timer', JSON.stringify({ expiresAt }))
+  await c.env.TIMER.put(`timer:${sessionId}`, JSON.stringify({ expiresAt }))
 
-  return c.redirect('/')
+  return c.redirect(`/?sessionId=${sessionId}`)
 })
 
 export default app
