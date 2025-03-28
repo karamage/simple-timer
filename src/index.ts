@@ -249,6 +249,12 @@ const generateHTML = (expiresAt: number | null, sessionId: string) => {
     
     <button type="submit">スタート</button>
   </form>
+  
+  <form id="cancel-form" method="post" action="/cancel" style="display: ${expiresAt ? 'block' : 'none'}; margin-top: 20px;">
+    <input type="hidden" name="sessionId" value="${sessionId}">
+    <button type="submit" style="background: linear-gradient(45deg, #ff3366, #ff0033);">キャンセル</button>
+  </form>
+  
   <div id="finished" class="finished" style="display: none;">COMPLETE</div>
 </div>
 
@@ -276,6 +282,7 @@ const generateHTML = (expiresAt: number | null, sessionId: string) => {
     const timerElement = document.getElementById('timer')
     const finishedElement = document.getElementById('finished')
     const progressCircle = document.getElementById('progress-circle')
+    const cancelForm = document.getElementById('cancel-form')
 
     const updateTimer = () => {
       const now = Date.now()
@@ -284,6 +291,7 @@ const generateHTML = (expiresAt: number | null, sessionId: string) => {
       if (remaining <= 0) {
         timerElement.style.display = 'none'
         finishedElement.style.display = 'block'
+        cancelForm.style.display = 'none'
         progressCircle.style.background = 'conic-gradient(#00e6ff 100%, rgba(0, 230, 255, 0.03) 0%)'
         document.querySelector('.glow').style.background = 'radial-gradient(circle, rgba(0, 230, 255, 0.6) 0%, rgba(0, 230, 255, 0) 70%)'
         clearInterval(interval)
@@ -356,6 +364,18 @@ app.post('/', async (c) => {
   }))
 
   return c.redirect(`/?sessionId=${sessionId}`)
+})
+
+// タイマーキャンセル
+app.post('/cancel', async (c) => {
+  const formData = await c.req.formData()
+  const sessionId = formData.get('sessionId') as string
+  
+  if (sessionId) {
+    await c.env.TIMER.delete(`timer:${sessionId}`)
+  }
+  
+  return c.redirect('/')
 })
 
 export default app
